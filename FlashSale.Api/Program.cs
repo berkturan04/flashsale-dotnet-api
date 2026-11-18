@@ -1,4 +1,6 @@
 using System.Net.Sockets;
+using FlashSale.Api;
+using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Scalar.AspNetCore;
 using StackExchange.Redis;
@@ -13,7 +15,9 @@ var postgresConn = builder.Configuration.GetConnectionString("Postgres")!;
 var redisConn = builder.Configuration.GetConnectionString("Redis")!;
 
 builder.Services.AddNpgsqlDataSource(postgresConn);
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ => 
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(postgresConn));
+builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
     ConnectionMultiplexer.Connect(redisConn));
 
 // 2. GÜN 1 (%20 ODAK): Dependency Injection Yaşam Döngüsü Laboratuvarı
@@ -52,7 +56,7 @@ app.MapGet("/api/day1-check", async (
     // RabbitMQ Port Kontrolü
     using var tcpClient = new TcpClient();
     await tcpClient.ConnectAsync(
-        config.GetConnectionString("RabbitMqHost")!, 
+        config.GetConnectionString("RabbitMqHost")!,
         int.Parse(config.GetConnectionString("RabbitMqPort")!));
 
     return Results.Ok(new
@@ -80,6 +84,33 @@ app.MapGet("/api/day1-check", async (
     });
 });
 
+// GÜN 2 TESLİMAT UÇ NOKTASI: PostgreSQL Tablo ve İndeks Doğrulaması
+app.MapGet("/api/day2-check", async (AppDbContext db, NpgsqlDataSource dataSource) =>
+{
+    var indexes = new List<object>();
+
+    await using var cmd = dataSource.CreateCommand(@"
+        SELECT tablename, indexname, indexdef 
+        FROM pg_indexes 
+        WHERE schemaname = 'public' AND indexname LIKE 'IX_%';");
+
+    await using var reader = await cmd.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        indexes.Add(new
+        {
+            Table = reader.GetString(0),
+            IndexName = reader.GetString(1),
+            Definition = reader.GetString(2)
+        });
+    }
+
+    return Results.Ok(new
+    {
+        SchemaStatus = "EF Core Code-First Ready",
+        ActiveCustomIndexes = indexes
+    });
+});
 app.Run();
 
 // DI Yaşam Döngüsü Test Sınıfları
