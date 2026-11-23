@@ -1,5 +1,6 @@
 using System.Net.Sockets;
 using FlashSale.Api;
+using FlashSale.Api.Features.Events;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Scalar.AspNetCore;
@@ -17,6 +18,8 @@ var redisConn = builder.Configuration.GetConnectionString("Redis")!;
 builder.Services.AddNpgsqlDataSource(postgresConn);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(postgresConn));
+// GÜN 3 EKLENTİSİ: CQRS (MediatR) Kaydı
+builder.Services.AddMediatR(cfg=>cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
     ConnectionMultiplexer.Connect(redisConn));
 
@@ -111,6 +114,9 @@ app.MapGet("/api/day2-check", async (AppDbContext db, NpgsqlDataSource dataSourc
         ActiveCustomIndexes = indexes
     });
 });
+// GÜN 3 TESLİMAT UÇ NOKTALARI: Vertical Slice Events
+CreateEvent.MapEndpoint(app);
+GetEvents.MapEndpoint(app);
 app.Run();
 
 // DI Yaşam Döngüsü Test Sınıfları
