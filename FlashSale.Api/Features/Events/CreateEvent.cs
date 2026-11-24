@@ -1,4 +1,5 @@
 ﻿using FlashSale.Api.Database;
+using FluentValidation;
 using MediatR;
 
 namespace FlashSale.Api.Features.Events;
@@ -19,6 +20,33 @@ public static class CreateEvent
         int AvailableStock,
         decimal Price,
         DateTime StartsAtUtc);
+
+
+    public sealed class Validator : AbstractValidator<Command>
+    {
+        public Validator()
+        {
+            RuleFor(x => x.Title)
+                .NotEmpty().WithMessage("Başlık boş olamaz.")
+                .MaximumLength(100).WithMessage("Başlık en fazla 100 karakter olabilir.");
+
+            RuleFor(x => x.TotalStock)
+                .GreaterThan(0).WithMessage("Toplam stok 0'dan büyük olmalıdır.")
+                .LessThanOrEqualTo(100_000).WithMessage("Tek etkinlikte en fazla 100.000 bilet açılabilir.");
+
+            RuleFor(x => x.Price)
+                .GreaterThan(0).WithMessage("Fiyat 0'dan büyük olmalıdır.");
+
+            RuleFor(x => x.StartsAtUtc)
+                .Must(date => date.ToUniversalTime() > DateTime.UtcNow)
+                .WithMessage("Etkinlik başlangıç tarihi gelecekte bir zaman olmalıdır.");
+        }
+
+        private bool BeInTheFuture(DateTime dateTime)
+        {
+            return dateTime > DateTime.UtcNow;
+        }
+    }
 
     // 3. Handler (Veritabanına Yazma Mantığı)
     public sealed class Handler(AppDbContext db) : IRequestHandler<Command, Response>

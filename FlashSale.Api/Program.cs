@@ -1,6 +1,8 @@
 using System.Net.Sockets;
 using FlashSale.Api;
+using FlashSale.Api.Common;
 using FlashSale.Api.Features.Events;
+using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Scalar.AspNetCore;
@@ -18,8 +20,15 @@ var redisConn = builder.Configuration.GetConnectionString("Redis")!;
 builder.Services.AddNpgsqlDataSource(postgresConn);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(postgresConn));
-// GÜN 3 EKLENTİSİ: CQRS (MediatR) Kaydı
-builder.Services.AddMediatR(cfg=>cfg.RegisterServicesFromAssembly(typeof(Program).Assembly));
+// GÜN 3 & 4: CQRS, Otomatik Validation Pipeline ve Global Hata Yönetimi
+builder.Services.AddValidatorsFromAssembly(typeof(Program).Assembly, includeInternalTypes: true);
+builder.Services.AddMediatR(cfg =>
+{
+    cfg.RegisterServicesFromAssembly(typeof(Program).Assembly);
+    cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));
+});
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
 builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
     ConnectionMultiplexer.Connect(redisConn));
 
@@ -29,6 +38,7 @@ builder.Services.AddScoped<IScopedTracker, LifecycleTracker>();
 builder.Services.AddTransient<ITransientTracker, LifecycleTracker>();
 
 var app = builder.Build();
+app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())
 {
@@ -117,6 +127,11 @@ app.MapGet("/api/day2-check", async (AppDbContext db, NpgsqlDataSource dataSourc
 // GÜN 3 TESLİMAT UÇ NOKTALARI: Vertical Slice Events
 CreateEvent.MapEndpoint(app);
 GetEvents.MapEndpoint(app);
+// GÜN 4 TESLİMAT TESTİ: Kontrolsüz Çökme Simülasyonu
+app.MapGet("/api/day4-crash-test", () =>
+{
+    throw new InvalidOperationException("Veritabanı bağlantısı aniden koptu (Hassas iç bilgi sızmamalı)!");
+});
 app.Run();
 
 // DI Yaşam Döngüsü Test Sınıfları
